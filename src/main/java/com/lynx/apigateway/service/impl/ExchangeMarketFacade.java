@@ -103,10 +103,10 @@ public class ExchangeMarketFacade implements MarketFacade {
                     .body(MarketStatusResponse.class);
             return response != null
                     ? response
-                    : new MarketStatusResponse("DISCONNECTED", false, null, null, null, null, null, null);
+                    : new MarketStatusResponse("DISCONNECTED", false, "CLOSED", false, null, null, null, null, null, null, null);
         } catch (Exception e) {
             log.error("Failed to fetch market status from notification service: {}", e.getMessage());
-            return new MarketStatusResponse("DISCONNECTED", false, null, null, null, null, null, null);
+            return new MarketStatusResponse("DISCONNECTED", false, "CLOSED", false, null, null, null, null, null, null, null);
         }
     }
 

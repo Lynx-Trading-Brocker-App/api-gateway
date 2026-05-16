@@ -11,6 +11,12 @@ public record MarketStatusResponse(
         @JsonProperty("exchange_connected")
         boolean exchangeConnected,
 
+        @JsonProperty("market_status")
+        String marketStatus,
+
+        @JsonProperty("is_open")
+        boolean isOpen,
+
         @JsonProperty("platform_id")
         String platformId,
 
@@ -19,6 +25,9 @@ public record MarketStatusResponse(
 
         @JsonProperty("market_date")
         String marketDate,
+
+        @JsonProperty("real_time")
+        String realTime,
 
         @JsonProperty("speed_multiplier")
         BigDecimal speedMultiplier,

@@ -172,9 +172,12 @@ public class StubMarketFacade implements MarketFacade {
         return new MarketStatusResponse(
                 "CONNECTED",
                 true,
+                "OPEN",
+                true,
                 "stub-platform",
                 now.toString(),
                 now.atOffset(java.time.ZoneOffset.UTC).toLocalDate().toString(),
+                now.toString(),
                 new BigDecimal("1.0000"),
                 now.toString(),
                 now.toString()
