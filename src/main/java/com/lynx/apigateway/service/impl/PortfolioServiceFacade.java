@@ -44,7 +44,6 @@ public class PortfolioServiceFacade implements PortfolioFacade {
 
     private final RestClient restClient;
     private final String portfolioServiceUrl;
-    private final String orderServiceUrl;
     private final String walletServiceUrl;
     private final WalletFacade walletFacade;
     private final MarketFacade marketFacade;
@@ -52,14 +51,12 @@ public class PortfolioServiceFacade implements PortfolioFacade {
     public PortfolioServiceFacade(
             RestClient.Builder restClientBuilder,
             @Value("${services.portfolio.url}") String portfolioServiceUrl,
-            @Value("${services.order.url}") String orderServiceUrl,
             @Value("${services.wallet.url}") String walletServiceUrl,
             WalletFacade walletFacade,
             MarketFacade marketFacade
     ){
         this.restClient = restClientBuilder.build();
         this.portfolioServiceUrl = portfolioServiceUrl;
-        this.orderServiceUrl = orderServiceUrl;
         this.walletServiceUrl = walletServiceUrl;
         this.walletFacade = walletFacade;
         this.marketFacade = marketFacade;
@@ -97,7 +94,7 @@ public class PortfolioServiceFacade implements PortfolioFacade {
         LocalDate endDate = LocalDate.now();
         LocalDate startDate = endDate.minusDays(days - 1L);
 
-        List<UserTradeDto> trades = fetchUserStockTrades(userId);
+        List<PositionEventDto> trades = fetchUserPositionEvents(userId);
         List<WalletTransactionDto> transactions = fetchWalletTransactions(userId, "USD");
         Map<String, NavigableMap<LocalDate, BigDecimal>> priceHistoryByTicker = loadPriceHistory(trades, endDate);
 
@@ -111,7 +108,7 @@ public class PortfolioServiceFacade implements PortfolioFacade {
         }
 
         Map<LocalDate, Map<String, BigDecimal>> quantityDeltasByDate = new HashMap<>();
-        for (UserTradeDto trade : trades) {
+        for (PositionEventDto trade : trades) {
             BigDecimal signedQuantity = "SELL".equalsIgnoreCase(trade.side())
                     ? trade.quantity().negate()
                     : trade.quantity();
@@ -134,7 +131,6 @@ public class PortfolioServiceFacade implements PortfolioFacade {
             if (!entry.getKey().isBefore(startDate)) {
                 continue;
             }
-
             for (Map.Entry<String, BigDecimal> tickerDelta : entry.getValue().entrySet()) {
                 applyHoldingDelta(holdings, tickerDelta.getKey(), tickerDelta.getValue());
             }
@@ -182,24 +178,25 @@ public class PortfolioServiceFacade implements PortfolioFacade {
     private BigDecimal cashDelta(WalletTransactionDto transaction) {
         return switch (transaction.transactionType()) {
             case "DEPOSIT" -> transaction.amount();
-            case "WITHDRAWAL", "ORDER_CAPTURE" -> transaction.amount().negate();
+            case "ORDER_CAPTURE" -> transaction.amount().negate();
             default -> BigDecimal.ZERO;
         };
     }
 
-    private List<UserTradeDto> fetchUserStockTrades(UUID userId) {
-        List<UserTradeDto> trades = restClient.get()
-                .uri(orderServiceUrl + "/api/orders/trades/user/{userId}?instrumentType=STOCK", userId)
+    private List<PositionEventDto> fetchUserPositionEvents(UUID userId) {
+        List<PositionEventDto> events = restClient.get()
+                .uri(portfolioServiceUrl + "/portfolio/events?instrumentType=STOCK")
+                .header("X-User-Id", userId.toString())
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
 
-        if (trades == null) {
+        if (events == null) {
             return List.of();
         }
 
-        return trades.stream()
-                .filter(trade -> trade.executedAt() != null)
-                .sorted(Comparator.comparing(UserTradeDto::executedAt))
+        return events.stream()
+                .filter(e -> e.executedAt() != null)
+                .sorted(Comparator.comparing(PositionEventDto::executedAt))
                 .toList();
     }
 
@@ -220,9 +217,9 @@ public class PortfolioServiceFacade implements PortfolioFacade {
                 .toList();
     }
 
-    private Map<String, NavigableMap<LocalDate, BigDecimal>> loadPriceHistory(List<UserTradeDto> trades, LocalDate today) {
+    private Map<String, NavigableMap<LocalDate, BigDecimal>> loadPriceHistory(List<PositionEventDto> trades, LocalDate today) {
         Set<String> tickers = new HashSet<>();
-        for (UserTradeDto trade : trades) {
+        for (PositionEventDto trade : trades) {
             tickers.add(trade.instrumentId());
         }
 
@@ -297,18 +294,14 @@ public class PortfolioServiceFacade implements PortfolioFacade {
         }
     }
 
-    private record UserTradeDto(
-            UUID tradeId,
-            UUID orderId,
-            UUID platformId,
-            UUID platformUserId,
-            String instrumentType,
+    private record PositionEventDto(
+            UUID id,
+            UUID userId,
             String instrumentId,
+            String instrumentType,
             String side,
             BigDecimal quantity,
             BigDecimal price,
-            BigDecimal exchangeFee,
             LocalDateTime executedAt
-    ) {
-    }
+    ) {}
 }
