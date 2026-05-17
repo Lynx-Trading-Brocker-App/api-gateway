@@ -32,10 +32,6 @@ public record PlaceOrderRequest(
 
         @DecimalMin(value = "0.01", message = "Limit price must be greater than 0.")
         @JsonProperty("limit_price")
-        BigDecimal limitPrice,
-
-        @DecimalMin(value = "0.01", message = "Market price must be greater than 0.")
-        @JsonProperty("market_price")
-        BigDecimal marketPrice
+        BigDecimal limitPrice
 ) {
 }

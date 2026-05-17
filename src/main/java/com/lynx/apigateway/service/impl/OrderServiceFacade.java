@@ -5,6 +5,7 @@ import com.lynx.apigateway.dto.order.*;
 import com.lynx.apigateway.error.ForbiddenException;
 import com.lynx.apigateway.error.NotFoundException;
 import com.lynx.apigateway.error.ValidationException;
+import com.lynx.apigateway.service.MarketFacade;
 import com.lynx.apigateway.service.OrderFacade;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
@@ -23,15 +24,18 @@ import java.util.UUID;
 public class OrderServiceFacade implements OrderFacade {
 
     private final RestClient restClient;
+    private final MarketFacade marketFacade;
     private final String orderServiceUrl;
     private final String platformId;
 
     public OrderServiceFacade(
             RestClient.Builder restClientBuilder,
+            MarketFacade marketFacade,
             @Value("${services.order.url}") String orderServiceUrl,
             @Value("${broker.platform-id}") String platformId
     ) {
         this.restClient = restClientBuilder.build();
+        this.marketFacade = marketFacade;
         this.orderServiceUrl = orderServiceUrl;
         this.platformId = platformId;
     }
@@ -42,11 +46,16 @@ public class OrderServiceFacade implements OrderFacade {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // For MARKET orders use marketPrice as the limitPrice so the order service
-        // can correctly reserve quantity × currentPrice from the wallet.
-        BigDecimal priceForReservation = "MARKET".equalsIgnoreCase(request.orderType())
-                ? request.marketPrice()
-                : request.limitPrice();
+        // For MARKET orders fetch the live price from the market service so the
+        // order service can correctly reserve quantity × currentPrice from the wallet.
+        BigDecimal priceForReservation;
+        if ("MARKET".equalsIgnoreCase(request.orderType())) {
+            priceForReservation = marketFacade.getStockByTicker(request.instrumentId())
+                    .stock()
+                    .currentPrice();
+        } else {
+            priceForReservation = request.limitPrice();
+        }
 
         OrderServiceOrderRequest body = new OrderServiceOrderRequest(
                 UUID.randomUUID(),
@@ -182,9 +191,6 @@ public class OrderServiceFacade implements OrderFacade {
     private void validatePlaceOrder(PlaceOrderRequest request) {
         if ("LIMIT".equalsIgnoreCase(request.orderType()) && request.limitPrice() == null) {
             throw new ValidationException("limit_price is required when order_type is LIMIT.");
-        }
-        if ("MARKET".equalsIgnoreCase(request.orderType()) && request.marketPrice() == null) {
-            throw new ValidationException("market_price is required when order_type is MARKET.");
         }
     }
 
