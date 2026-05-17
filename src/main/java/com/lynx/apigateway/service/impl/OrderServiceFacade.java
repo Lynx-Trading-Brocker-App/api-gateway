@@ -42,6 +42,12 @@ public class OrderServiceFacade implements OrderFacade {
 
         LocalDateTime now = LocalDateTime.now();
 
+        // For MARKET orders use marketPrice as the limitPrice so the order service
+        // can correctly reserve quantity × currentPrice from the wallet.
+        BigDecimal priceForReservation = "MARKET".equalsIgnoreCase(request.orderType())
+                ? request.marketPrice()
+                : request.limitPrice();
+
         OrderServiceOrderRequest body = new OrderServiceOrderRequest(
                 UUID.randomUUID(),
                 UUID.fromString(platformId),
@@ -51,7 +57,7 @@ public class OrderServiceFacade implements OrderFacade {
                 request.orderType(),
                 request.side(),
                 BigDecimal.valueOf(request.quantity()),
-                request.limitPrice(),
+                priceForReservation,
                 "PENDING",
                 BigDecimal.ZERO,
                 null,
@@ -176,6 +182,9 @@ public class OrderServiceFacade implements OrderFacade {
     private void validatePlaceOrder(PlaceOrderRequest request) {
         if ("LIMIT".equalsIgnoreCase(request.orderType()) && request.limitPrice() == null) {
             throw new ValidationException("limit_price is required when order_type is LIMIT.");
+        }
+        if ("MARKET".equalsIgnoreCase(request.orderType()) && request.marketPrice() == null) {
+            throw new ValidationException("market_price is required when order_type is MARKET.");
         }
     }
 
