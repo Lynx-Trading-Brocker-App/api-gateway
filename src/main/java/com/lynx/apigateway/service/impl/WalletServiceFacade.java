@@ -5,6 +5,7 @@ import com.lynx.apigateway.dto.wallet.WithdrawRequest;
 import com.lynx.apigateway.dto.wallet.DepositResponse;
 import com.lynx.apigateway.dto.wallet.WalletBalanceResponse;
 import com.lynx.apigateway.dto.wallet.WalletDto;
+import com.lynx.apigateway.dto.wallet.WalletTransactionsPageResponse;
 import com.lynx.apigateway.dto.wallet.WithdrawResponse;
 import com.lynx.apigateway.service.WalletFacade;
 import org.springframework.beans.factory.annotation.Value;
@@ -60,5 +61,15 @@ public class WalletServiceFacade implements WalletFacade {
                 .body(WalletDto.class);
 
         return new WalletBalanceResponse(wallet);
+    }
+
+    @Override
+    public WalletTransactionsPageResponse getTransactions(UUID userId, int page, int limit) {
+        return restClientBuilder.build()
+                .get()
+                .uri(walletServiceUrl + "/funds/transactions?page={page}&limit={limit}", page, limit)
+                .header("X-User-Id", userId.toString())
+                .retrieve()
+                .body(WalletTransactionsPageResponse.class);
     }
 }

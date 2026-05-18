@@ -5,6 +5,7 @@ import com.lynx.apigateway.dto.order.*;
 import com.lynx.apigateway.error.ForbiddenException;
 import com.lynx.apigateway.error.NotFoundException;
 import com.lynx.apigateway.error.ValidationException;
+import com.lynx.apigateway.service.MarketFacade;
 import com.lynx.apigateway.service.OrderFacade;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
@@ -25,15 +26,18 @@ public class OrderServiceFacade implements OrderFacade {
     private final RestClient restClient;
     private final String orderServiceUrl;
     private final String platformId;
+    private final MarketFacade marketFacade;
 
     public OrderServiceFacade(
             RestClient.Builder restClientBuilder,
             @Value("${services.order.url}") String orderServiceUrl,
-            @Value("${broker.platform-id}") String platformId
+            @Value("${broker.platform-id}") String platformId,
+            MarketFacade marketFacade
     ) {
         this.restClient = restClientBuilder.build();
         this.orderServiceUrl = orderServiceUrl;
         this.platformId = platformId;
+        this.marketFacade = marketFacade;
     }
 
     @Override
@@ -41,6 +45,13 @@ public class OrderServiceFacade implements OrderFacade {
         validatePlaceOrder(request);
 
         LocalDateTime now = LocalDateTime.now();
+
+        BigDecimal resolvedLimitPrice = request.limitPrice();
+        if ("BUY".equalsIgnoreCase(request.side())
+                && "MARKET".equalsIgnoreCase(request.orderType())
+                && resolvedLimitPrice == null) {
+            resolvedLimitPrice = resolveMarketPrice(request.instrumentType(), request.instrumentId());
+        }
 
         OrderServiceOrderRequest body = new OrderServiceOrderRequest(
                 UUID.randomUUID(),
@@ -51,7 +62,7 @@ public class OrderServiceFacade implements OrderFacade {
                 request.orderType(),
                 request.side(),
                 BigDecimal.valueOf(request.quantity()),
-                request.limitPrice(),
+                resolvedLimitPrice,
                 "PENDING",
                 BigDecimal.ZERO,
                 null,
@@ -171,6 +182,26 @@ public class OrderServiceFacade implements OrderFacade {
                 order.updatedAt(),
                 order.expiresAt()
         );
+    }
+
+    private BigDecimal resolveMarketPrice(String instrumentType, String instrumentId) {
+        try {
+            if ("OPTION".equalsIgnoreCase(instrumentType)) {
+                return marketFacade.getOptions().options().stream()
+                        .filter(o -> instrumentId.equals(o.optionId()))
+                        .findFirst()
+                        .map(o -> BigDecimal.valueOf(o.premium()))
+                        .orElseThrow(() -> new ValidationException(
+                                "Cannot place MARKET order: option " + instrumentId + " not found."));
+            } else {
+                return marketFacade.getStockByTicker(instrumentId).stock().currentPrice();
+            }
+        } catch (ValidationException | NotFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ValidationException(
+                    "Cannot place MARKET order: failed to fetch current price for " + instrumentId + ".");
+        }
     }
 
     private void validatePlaceOrder(PlaceOrderRequest request) {
